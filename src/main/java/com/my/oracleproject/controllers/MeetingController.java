@@ -1,34 +1,30 @@
 package com.my.oracleproject.controllers;
 
-import com.my.oracleproject.dao.*;
 import com.my.oracleproject.models.*;
+import com.my.oracleproject.repositories.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
-
 import javax.servlet.http.*;
 import java.sql.Timestamp;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 
 
 @Controller
 public class MeetingController {
-
-    private final MeetingDao meetingDao;
-    private final CountryDao countryDao;
-    private final StatusDao statusDao;
-    private final SpeakerDao speakerDao;
-    private final UserDao userDao;
+    private final StatusRepository statusRepository;
+    private final CountryRepository countryRepository;
+    private final MeetingRepository meetingRepository;
+    private final UserRepository userRepository;
+    private final SpeakerRepository speakerRepository;
     @Autowired
-    public MeetingController(MeetingDao meetingDao, CountryDao countryDao, StatusDao statusDao, SpeakerDao speakerDao, UserDao userDao) {
-        this.meetingDao = meetingDao;
-        this.countryDao = countryDao;
-        this.statusDao = statusDao;
-        this.speakerDao = speakerDao;
-        this.userDao = userDao;
+    public MeetingController(StatusRepository statusRepository, CountryRepository countryRepository, MeetingRepository meetingRepository, UserRepository userRepository, SpeakerRepository speakerRepository) {
+        this.statusRepository = statusRepository;
+        this.countryRepository = countryRepository;
+        this.meetingRepository = meetingRepository;
+        this.userRepository = userRepository;
+        this.speakerRepository = speakerRepository;
     }
 
 
@@ -49,9 +45,9 @@ public class MeetingController {
             }
         }
         if(role.equals("reader"))
-            model.addAttribute("meetings", meetingDao.byUser(login));
+            model.addAttribute("meetings", meetingRepository.findByUserLogin(login));
         else
-            model.addAttribute("meetings", meetingDao.index());
+            model.addAttribute("meetings", meetingRepository.findAll());
         model.addAttribute("role", role);
         if(!login.equals("")) {
             return "meeting-main";
@@ -60,10 +56,10 @@ public class MeetingController {
     }
     @GetMapping("/meeting/add")
     public String meetingAdd(Model model){
-        model.addAttribute("countries", countryDao.index());
-        model.addAttribute("statuses", statusDao.index());
+        model.addAttribute("countries", countryRepository.findAll());
+        model.addAttribute("statuses", statusRepository.findAll());
         model.addAttribute("meeting", new Meeting());
-        model.addAttribute("speakers", speakerDao.index());
+        model.addAttribute("speakers", speakerRepository.findAll());
         return "meeting-add";
 
     }
@@ -72,34 +68,38 @@ public class MeetingController {
                          @RequestParam String id_country, @RequestParam String id_status, @RequestParam String id_speaker){
         String[] info_country = id_country.split(" ");
         String[] info_status = id_status.split(" ");
-        Country country = new Country();
-        country.setId(Long.valueOf(info_country[0]));
-        country.setName(info_country[1]);
-        Status status = new Status();
-        status.setId(Long.valueOf(info_status[0]));
-        status.setName(info_status[1]);
+        Country country = countryRepository.findById(Long.valueOf(info_country[0])).orElse(null);
+        Status status = statusRepository.findById(Long.valueOf(info_status[0])).orElse(null);
         String corectDate = date.split("T")[0] + " " + date.split("T")[1] + ":00";
         Meeting meeting = new Meeting(title, Timestamp.valueOf(corectDate), address, country, status);
-
-        meetingDao.save(meeting);
-
+        meeting = meetingRepository.save(meeting);
         String[] us = id_speaker.split(";");
         List<Long> index = new ArrayList<>();
         Arrays.stream(us).map(el -> el.split(" ")[0])
-                .mapToLong(i -> Long.valueOf(i))
-                .forEach(s -> index.add(s));
-
-        Meeting check = meetingDao.getMeeting(title, address);
+                .mapToLong(Long:: parseLong)
+                .forEach(index::add);
         for (long i: index){
-            if(speakerDao.likeId(i) != null)
-                speakerDao.speakMeeting(i, check.getId());
-
+            if(speakerRepository.findById(i).isPresent()){
+                Speaker speaker = speakerRepository.findById(i).get();
+                Set<Meeting> meetings = speaker.getLikedMeeting();
+                if(meetings == null)
+                    meetings = new HashSet<>();
+                meetings.add(meeting);
+                speaker.setLikedMeeting(meetings);
+                speakerRepository.save(speaker);
+                Set<Speaker> speakers = meeting.getLikesSpeaker();
+                if(speakers == null)
+                   speakers = new HashSet<>();
+                speakers.add(speaker);
+                meeting.setLikesSpeaker(speakers);
+                meetingRepository.save(meeting);
+            }
         }
         return "redirect:/meeting";
     }
     @GetMapping("/meeting/{id}")
     public String show(HttpServletRequest request, @PathVariable("id") long id, Model model){
-        Meeting meeting = meetingDao.show(id);
+        Meeting meeting = meetingRepository.findById(id).orElse(null);
         if(meeting == null){
             return "redirect:/meeting";
         }
@@ -114,80 +114,90 @@ public class MeetingController {
         }
         model.addAttribute("role", role);
         model.addAttribute("meeting", meeting);
-        model.addAttribute("speakers", speakerDao.meetingLike(id));
+        model.addAttribute("speakers", speakerRepository.speakerOfMeeting(id));
         return "meeting-details";
     }
     @GetMapping("/meeting/{id}/edit")
     public String blogEdit(@PathVariable("id") long id, Model model){
-        Meeting meeting = meetingDao.show(id);
+        Meeting meeting = meetingRepository.findById(id).orElse(null);
         if(meeting == null){
             return "redirect:/meeting";
         }
-        model.addAttribute("countries", countryDao.index());
-        model.addAttribute("statuses", statusDao.index());
+        model.addAttribute("countries", countryRepository.findAll());
+        model.addAttribute("statuses", statusRepository.findAll());
         model.addAttribute("meeting", meeting);
-        List<Speaker> speakers =  speakerDao.meetingLike(id);
-        String res_speakers = "";
+        List<Speaker> speakers =  speakerRepository.speakerOfMeeting(id);
+        StringBuilder res_speakers = new StringBuilder();
         for (Speaker speaker: speakers){
-            res_speakers += speaker.getId() + " " + speaker.getName() + ";";
+            res_speakers.append(speaker.getId()).append(" ").append(speaker.getName()).append(";");
         }
+        if(res_speakers.isEmpty())
+            model.addAttribute("speaker", "");
+        else
+            model.addAttribute("speaker",
+                res_speakers.substring(0, res_speakers.length() - 1));
 
-        model.addAttribute("speaker", res_speakers.substring(0, res_speakers.length() - 1));
-
-        model.addAttribute("speakers", speakerDao.index());
+        model.addAttribute("speakers", speakerRepository.findAll());
         return "meeting-edit";
     }
     @PostMapping("/meeting/{id}/edit")
     public String update(@PathVariable("id") long id, @RequestParam String title, @RequestParam String date, @RequestParam String address,
                          @RequestParam String id_country, @RequestParam String id_status, @RequestParam String id_speaker){
-        Meeting meeting = meetingDao.show(id);
+        Meeting meeting = meetingRepository.findById(id).orElse(null);
         if(meeting == null){
             return "redirect:/meeting";
         }
         String[] info_country = id_country.split(" ");
         String[] info_status = id_status.split(" ");
-        Country country = new Country();
-        country.setId(Long.valueOf(info_country[0]));
-        country.setName(info_country[1]);
-        Status status = new Status();
-        status.setId(Long.valueOf(info_status[0]));
-        status.setName(info_status[1]);
+        Country country = countryRepository.findById(Long.valueOf(info_country[0])).orElse(null);
+        Status status = statusRepository.findById(Long.valueOf(info_status[0])).orElse(null);
         String corectDate = date.split("T")[0] + " " + date.split("T")[1] + ":00";
         meeting.setTitle(title);
         meeting.setDate(Timestamp.valueOf(corectDate));
         meeting.setAddress(address);
         meeting.setCountry(country);
         meeting.setStatus(status);
-        meetingDao.update(id, meeting);
+        meeting = meetingRepository.save(meeting);
 
         String[] us = id_speaker.split(";");
         List<Long> index = new ArrayList<>();
         Arrays.stream(us).map(el -> el.split(" ")[0])
-                .mapToLong(i -> Long.valueOf(i))
-                .forEach(s -> index.add(s));
-        List<Long> index2 = new ArrayList<>();
-        List<Speaker> checkSpeakers = speakerDao.meetingLike(id);
-        List<Speaker> checkSpeaker = new ArrayList<>();
+                .mapToLong(Long:: parseLong)
+                .forEach(index::add);
+        List<Speaker> checkSpeakers = speakerRepository.speakerOfMeeting(id);
         for (Speaker el: checkSpeakers){
-            if(index.contains(el.getId()))
-                index.remove(el.getId());
-            else
-                index2.add(el.getId());
-        }
-        for (long i: index2){
-            for(Speaker speaker: checkSpeakers){
-                if(speaker.getId().equals(i)) {
-                    checkSpeaker.add(speaker);
-                }
-            }
+            index.remove(el.getId());
         }
 
         for (Speaker el: checkSpeakers){
-            speakerDao.removeSpeakMeeting( id, el.getId());
+            if(speakerRepository.findById(el.getId()).isPresent()) {
+                Speaker speaker = speakerRepository.findById(el.getId()).get();
+                Set<Meeting> meetings = speaker.getLikedMeeting();
+                meetings.remove(meeting);
+                speaker.setLikedMeeting(meetings);
+                speakerRepository.save(speaker);
+                Set<Speaker> speakers = meeting.getLikesSpeaker();
+                speakers.remove(speaker);
+                meeting.setLikesSpeaker(speakers);
+                meetingRepository.save(meeting);
+            }
         }
         for (long i: index){
-            if(speakerDao.likeId(i) != null)
-                speakerDao.speakMeeting(i, id);
+            if(speakerRepository.findById(i).isPresent()){
+                Speaker speaker = speakerRepository.findById(i).get();
+                Set<Meeting> meetings = speaker.getLikedMeeting();
+                if(meetings == null)
+                    meetings = new HashSet<>();
+                meetings.add(meeting);
+                speaker.setLikedMeeting(meetings);
+                speakerRepository.save(speaker);
+                Set<Speaker> speakers = meeting.getLikesSpeaker();
+                if(speakers == null)
+                    speakers = new HashSet<>();
+                speakers.add(speaker);
+                meeting.setLikesSpeaker(speakers);
+                meetingRepository.save(meeting);
+            }
 
         }
 
@@ -195,46 +205,47 @@ public class MeetingController {
     }
     @PostMapping("/meeting/{id}/remove")
     public String remove(@PathVariable("id") long id){
-        Meeting meeting = meetingDao.show(id);
+        Meeting meeting = meetingRepository.findById(id).orElse(null);
         if(meeting == null){
             return "redirect:/meeting";
         }
-        meetingDao.delete(id);
+        meetingRepository.delete(meeting);
 
         return "redirect:/meeting";
     }
     @GetMapping("/meeting/speakers")
     public String allSpeakers(Model model){
-        model.addAttribute("speakers", speakerDao.index());
-        return "/meeting-speakers";
+        model.addAttribute("speakers", speakerRepository.findAll());
+        return "meeting-speakers";
     }
     @GetMapping("/meeting/speakers/add")
     public String addSpeaker(Model model){
-        model.addAttribute("users", userDao.index());
-        return "/meeting-speakers-add";
+        model.addAttribute("users", userRepository.findAll());
+        return "meeting-speakers-add";
     }
     @PostMapping("/meeting/speakers/add")
-    public String cheak_addUser(@RequestParam String speakers, Model model){
+    public String cheak_addUser(@RequestParam String speakers){
         String[] us = speakers.split(";");
 
         List<String> index = new ArrayList<>();
         Arrays.stream(us).map(el -> el.split(" ")[1])
-                .forEach(s -> index.add(s));
+                .forEach(index::add);
 
-        List<Speaker> check = speakerDao.index();
+        List<Speaker> check = speakerRepository.findAll();
         for (Speaker el: check){
-            if(index.contains(el.getName()))
-                index.remove(el.getName());
+            index.remove(el.getName());
         }
         Speaker speaker;
         for (String i: index){
             speaker = new Speaker(i);
-            speakerDao.addSpeaker(speaker);
+            speakerRepository.save(speaker);
         }
         return "redirect:/meeting/speakers";
     }
     @PostMapping("/meeting/speakers/{id}/delete")
-    public void removeSpeaker(@PathVariable("id") long id){
-        speakerDao.deleteSpeaker(id);
+    public String removeSpeaker(@PathVariable("id") long id){
+        if(speakerRepository.findById(id).isPresent())
+            speakerRepository.delete(speakerRepository.findById(id).get());
+        return "redirect:/meeting/speakers";
     }
 }

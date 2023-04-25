@@ -13,7 +13,7 @@ import java.util.List;
 })
 public class Status {
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id_status")
     private Long id;
     @Size(min = 2, max = 15)

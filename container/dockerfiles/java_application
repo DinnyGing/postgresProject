@@ -1,0 +1,7 @@
+FROM amazoncorretto:17.0.5-alpine
+EXPOSE 8085
+RUN addgroup -S spring-group && adduser -S spring -G spring-group
+USER spring:spring-group
+ARG JAR_FILE=project.jar
+COPY ${JAR_FILE} app.jar
+ENTRYPOINT ["java","-jar", "app.jar"]

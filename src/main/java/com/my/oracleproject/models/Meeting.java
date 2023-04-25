@@ -13,7 +13,7 @@ import java.util.Set;
 @Table(name = "meetings")
 public class Meeting {
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id_meeting", nullable = false)
     private Long id;
     @Size(min = 2, max = 255)
@@ -110,6 +110,22 @@ public class Meeting {
     }
     public void setStatus(Status status) {
         this.status = status;
+    }
+
+    public Set<User> getLikesUser() {
+        return likesUser;
+    }
+
+    public void setLikesUser(Set<User> likesUser) {
+        this.likesUser = likesUser;
+    }
+
+    public Set<Speaker> getLikesSpeaker() {
+        return likesSpeaker;
+    }
+
+    public void setLikesSpeaker(Set<Speaker> likesSpeaker) {
+        this.likesSpeaker = likesSpeaker;
     }
 
     @Override

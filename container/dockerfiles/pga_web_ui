@@ -1,0 +1,6 @@
+FROM dpage/pgadmin4:6.13
+EXPOSE 80
+ENV PGADMIN_DEFAULT_EMAIL postgres@postgres.com
+ENV PGADMIN_DEFAULT_PASSWORD mambl1603
+
+

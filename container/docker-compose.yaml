@@ -1,0 +1,38 @@
+version: "3.9"
+services:
+  postgres-server:
+    networks:
+      - default
+    build:
+      context: ./dockerfiles
+      dockerfile: postgres_server
+    ports:
+      - "5432:5432"
+
+  pga:
+    networks:
+      - default
+    build:
+      context: ./dockerfiles
+      dockerfile: pga_web_ui
+    depends_on:
+      - postgres-server
+    ports:
+      - "5333:80"
+
+  application:
+    networks:
+      - default
+    build:
+      context: ./dockerfiles
+      dockerfile: java_application
+    depends_on:
+      - postgres-server
+    ports:
+      - "8085:8085"
+#    volumes:
+#      - ./src/main/resources:/app/src/main/resources
+
+networks:
+  default:
+    driver: bridge

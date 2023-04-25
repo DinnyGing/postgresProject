@@ -8,7 +8,7 @@ import java.util.Set;
 @Table(name = "speakers")
 public class Speaker {
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id_speaker")
     private Long id;
     @Size(min = 2, max = 40)
@@ -41,6 +41,14 @@ public class Speaker {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public Set<Meeting> getLikedMeeting() {
+        return likedMeeting;
+    }
+
+    public void setLikedMeeting(Set<Meeting> likedMeeting) {
+        this.likedMeeting = likedMeeting;
     }
 
     @Override
